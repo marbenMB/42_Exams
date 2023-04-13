@@ -8,7 +8,7 @@ class	Dummy : public ATarget
 	public :
 		Dummy ();
 		~Dummy ();
-		ATarget const *clone (void);
+		ATarget *clone (void) const;
 };
 
 #endif

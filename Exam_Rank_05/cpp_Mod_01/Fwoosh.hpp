@@ -8,7 +8,7 @@ class	Fwoosh : public ASpell
 	public :
 		Fwoosh ();
 		~Fwoosh ();
-		ASpell	const	*clone (void);
+		ASpell	*clone (void) const;
 };
 
 #endif
