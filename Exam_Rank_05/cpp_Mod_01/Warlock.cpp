@@ -1,7 +1,7 @@
 
 #include "Warlock.hpp"
 
-Warlock::Warlock (std::string name, std::string title) : _name(name), _title(title)
+Warlock::Warlock (std::string const &name, std::string const &title) : _name(name), _title(title)
 {
 	std::cout << _name << ": " << "This looks like another boring day." << std::endl;
 }
@@ -29,4 +29,26 @@ void	Warlock::setTitle (std::string const &tl)
 void	Warlock::introduce (void) const
 {
 	std::cout << _name << ": I am " << _name << ", " << _title << "!" << std::endl;
+}
+
+void	Warlock::learnSpell (ASpell *spell)
+{
+	if (spell != NULL)
+		_war[spell->getName()] = spell;
+}
+
+void	Warlock::forgetSpell (std::string spellName)
+{
+	std::map<std::string, ASpell *>::iterator	it = _war.find(spellName);
+
+	if (it != _war.end())
+		_war.erase(it);
+}
+
+void	Warlock::launchSpell (std::string spellName, ATarget &target)
+{
+	std::map<std::string, ASpell *>::iterator	it = _war.find(spellName);
+
+	if (it != _war.end())
+		it->second->launch(target);
 }

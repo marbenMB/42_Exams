@@ -1,26 +1,24 @@
-
-#ifndef	_AS_HPP_
-#define	_AS_HPP_
+#ifndef	_AS_HPP
+#define	_AS_HPP
 
 #include <iostream>
+#include "ATarget.hpp"
+
+class	ATarget;
 
 class	ASpell
 {
-
-	public :
-		ASpell (std::string name, std::string effects);
-		std::string	const	&getName	(void) const;
-		std::string	const	&getEffects	(void) const;
-		ASpell const virtual	*clone(void) = 0;
-
 	protected :
 		std::string	_name;
 		std::string	_effects;
 	
-	private :
-		ASpell	();
-		ASpell	(ASpell const &obj);
-		ASpell	&operator= (ASpell const &obj);
+	public :
+		ASpell (std::string name, std::string effect);
+		virtual ~ASpell ();
+		std::string	const	&getName (void) const;
+		std::string	const	&getEffects (void) const;
+		virtual	ASpell	const	*clone (void) = 0;
+		void		launch (ATarget const &target) const;
 };
 
 #endif
