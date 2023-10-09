@@ -45,6 +45,7 @@ int main(int ac, char **av)
 	int serv_socket;
 	int port;
 	struct sockaddr_in addr;
+	vector*	sockets = NULL;
 
 	port = atoi(av[1]);
 	printf("Port : %d\n", port);
@@ -65,13 +66,21 @@ int main(int ac, char **av)
 	if (listen(serv_socket, SOMAXCONN))
 		error_fatal();
 
-	printf("Server \n");
+	sockets = (vector *)calloc(1, sizeof(vector));
+
+	write(1, "Server ---- Listening\n", strlen("Server ---- Listening\n"));
+
+	fd_set read_fds, master_fds;
+    struct sockaddr_in client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
 
 	while (1)
 	{
 		
 	}
 
+	free(sockets);
+	system("leaks mini");
 	close(serv_socket);
 
 }
