@@ -1,86 +1,169 @@
-#include "mini_serv.h"
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <libc.h>
 
-// ./mini PORT 
-//! Memory or fd leaks are forbidden
-
-//* if system call fail before accepting -> write(2, "Fatal error\n", strlen("Fatal error") + 1) and exit(1)
-//* if can't allocate memo -> write(2, "Fatal error\n", strlen("Fatal error") + 1) and exit(1)
-//* if new client is connected to server ; broadcast -> "server: client ID just arrived\n"
-//? New line '\n' is the separator
-//* when server recieve a client's message ; broadcast -> "client ID : ....MSG LINE...."
-//* when client is disconnected ; broadcast -> "server: client ID just left\n"
-
-void error_fatal()
+int extract_message(char **buf, char **msg)
 {
-	write(2, "Fatal error\n", strlen("Fatal error") + 1);
-	exit(1);
-}
+	char	*newbuf;
+	int	i;
 
-int	setOptionSocket(int fd)
-{
-	int	optval = 1;
-
-	//?-	Reusable addresss
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)))
-		return 1;
-	//?-	Non Blocking fd
-	if (fcntl(fd, F_SETFL,	O_NONBLOCK) < 0)
-		return 1;
-	return 0;
-}
-
-void broadcastMessage(vector *clients, char *msg)
-{
-	// boradcast msg to all client in the clients vector.
-}
-
-int main(int ac, char **av)
-{
-	if (ac != 2)
+	*msg = 0;
+	if (*buf == 0)
+		return (0);
+	i = 0;
+	while ((*buf)[i])
 	{
-		write(2, "Wrong number of arguments\n", strlen("Wrong number of arguments") + 1);
-		exit(1);
+		if ((*buf)[i] == '\n')
+		{
+			newbuf = calloc(1, sizeof(*newbuf) * (strlen(*buf + i + 1) + 1));
+			if (newbuf == 0)
+				return (-1);
+			strcpy(newbuf, *buf + i + 1);
+			*msg = *buf;
+			(*msg)[i + 1] = 0;
+			*buf = newbuf;
+			return (1);
+		}
+		i++;
 	}
+	return (0);
+}
 
-	int serv_socket;
-	int port;
-	struct sockaddr_in addr;
-	vector*	sockets = NULL;
+char *str_join(char *buf, char *add)
+{
+	char	*newbuf;
+	int		len;
 
-	port = atoi(av[1]);
-	printf("Port : %d\n", port);
-	serv_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (serv_socket < 0)
-		error_fatal();
-	if (setOptionSocket(serv_socket))
-		error_fatal();
+	if (buf == 0)
+		len = 0;
+	else
+		len = strlen(buf);
+	newbuf = malloc(sizeof(*newbuf) * (len + strlen(add) + 1));
+	if (newbuf == 0)
+		return (0);
+	newbuf[0] = 0;
+	if (buf != 0)
+		strcat(newbuf, buf);
+	free(buf);
+	strcat(newbuf, add);
+	return (newbuf);
+}
 
-	bzero(&addr, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
-	addr.sin_addr.s_addr = INADDR_ANY;
+void	error(char *msg, int stat)
+{
+	write(2, msg, strlen(msg));
+	exit (stat);
+}
 
-	if (bind(serv_socket, (struct sockaddr *)&addr, (socklen_t)sizeof(addr)))
-		error_fatal();
+int fds[700000], max_fd, fds_count = 0;
+char *msgs[700000];
+char noitfmsg[42];
+char buffer[1024];
+fd_set readfds, writefds, global;
 
-	if (listen(serv_socket, SOMAXCONN))
-		error_fatal();
+void	notification(int fd, char *msg)
+{
+	for (int i = 0; i < max_fd + 1; i++)
+	{
+		if (FD_ISSET(i, &global) && i != fd)
+			send(i, msg, strlen(msg), 0);
+	}
+}
 
-	sockets = (vector *)calloc(1, sizeof(vector));
+void	add_client(int fd)
+{
+	max_fd = fd > max_fd ? fd : max_fd;
+	fds[fd] = fds_count++;
+	msgs[fd] = NULL;
+	FD_SET(fd, &global);
+	sprintf(noitfmsg, "server: client %d just arrived\n", fds[fd]);
+	notification(fd, noitfmsg);
+}
 
-	write(1, "Server ---- Listening\n", strlen("Server ---- Listening\n"));
+void	rm_client(int fd)
+{
+	sprintf(noitfmsg, "server: client %d just left\n", fds[fd]);
+	notification(fd, noitfmsg);
+	FD_CLR(fd, &global);
+	close(fd);
+	if (msgs[fd] != NULL)
+		free(msgs[fd]);
+	msgs[fd] = NULL;
+}
 
-	fd_set read_fds, master_fds;
-    struct sockaddr_in client_addr;
-    socklen_t client_addr_len = sizeof(client_addr);
+void	send_message(int fd)
+{
+	char *msg;
+	while (extract_message(&msgs[fd], &msg))
+	{
+		sprintf(noitfmsg, "client %d: ", fds[fd]);
+		notification(fd, noitfmsg);
+		notification(fd, msg);
+		free(msg);
+	}
+}
+
+int main(int ac, char **av) {
+	int sockfd, connfd, len;
+	struct sockaddr_in servaddr, cliaddr; 
+
+	if (ac != 2)
+		error("Wrong number of arguments\n", 1);
+
+	// socket create and verification 
+	sockfd = socket(AF_INET, SOCK_STREAM, 0); 
+	if (sockfd == -1) error("Fatal error\n", 1); 
+	bzero(&servaddr, sizeof(servaddr)); 
+
+	// assign IP, PORT 
+	servaddr.sin_family = AF_INET; 
+	servaddr.sin_addr.s_addr = htonl(2130706433); //127.0.0.1
+	servaddr.sin_port = htons(atoi(av[1])); 
+  
+	// Binding newly created socket to given IP and verification 
+	if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0) error("Fatal error\n", 1); 
+	if (listen(sockfd, 10) != 0) error("Fatal error\n", 1); 
+	
+	FD_ZERO(&global);
+	FD_SET(sockfd, &global);
+	max_fd = sockfd;
 
 	while (1)
 	{
-		
+		writefds = readfds = global;
+
+		if (select(max_fd + 1, &readfds, &writefds, NULL, 0) < 0) error("Fatal error\n", 1); 
+		for (int i = 0; i < max_fd + 1; i++)
+		{
+			if (FD_ISSET(i, &readfds))
+			{
+				if (i == sockfd)
+				{
+					len = sizeof(cliaddr);
+					connfd = accept(i, (struct sockaddr *)&cliaddr, (socklen_t *)&len);
+					if (connfd < 0) 
+						return (0);
+					add_client(connfd);
+					break;
+				}
+				else
+				{
+					int n = recv(i, buffer, 1000, 0);
+					if (n <= 0)
+						rm_client(i);
+					else
+					{
+						buffer[n] = 0;
+						msgs[i] = str_join(msgs[i], buffer);
+						send_message(i);
+					}
+					break;
+				}
+			}
+		}
 	}
-
-	free(sockets);
-	system("leaks mini");
-	close(serv_socket);
-
 }
